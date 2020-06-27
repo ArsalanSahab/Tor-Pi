@@ -55,33 +55,33 @@ After Rebooting ...
 * Execute the following commands in the terminal to configure the IPTABLES :
 	
 	
-		* `sudo iptables -F && sudo iptables -t nat -F`
+		 `sudo iptables -F && sudo iptables -t nat -F`
 		
-		* `sudo iptables -t nat -A PREROUTING -i wlan0 -p udp --dport 53 -j REDIRECT --to-ports 53`
+		 `sudo iptables -t nat -A PREROUTING -i wlan0 -p udp --dport 53 -j REDIRECT --to-ports 53`
 
-		* `sudo iptables -t nat -A PREROUTING -i wlan0 -p tcp --syn -j REDIRECT --to-ports 9040`
+		 `sudo iptables -t nat -A PREROUTING -i wlan0 -p tcp --syn -j REDIRECT --to-ports 9040`
 
-		* `sudo sh -c "iptables-save > /etc/iptables.ipv4.nat"`
+		 `sudo sh -c "iptables-save > /etc/iptables.ipv4.nat"`
 
 
 * Execute the following commands in the terminal to configure the LOG FILES :
 
 		
-		* `sudo touch /var/log/tor/notices.log`
+		 `sudo touch /var/log/tor/notices.log`
 
-		* `sudo chown debian-tor /var/log/tor/notices.log && sudo chmod 644 /var/log/tor/notices.log`
+		 `sudo chown debian-tor /var/log/tor/notices.log && sudo chmod 644 /var/log/tor/notices.log`
 
 
 * Execute the following commands in the terminal to configure the TOR :
 
 		
-		* `sudo service tor start`
+		 `sudo service tor start`
 		
-		* `sudo service tor status`
+		 `sudo service tor status`
 
-		* `sudo update-rc.d tor enable`
+		 `sudo update-rc.d tor enable`
 
-		* `sudo reboot`
+		 `sudo reboot`
 
 
 
