@@ -1,0 +1,198 @@
+#!/bin/bash
+# Raspberry Pi AP Script
+
+clear
+
+echo "======================================================="
+echo "======== Welcome! Lets get you set-up ========="
+echo "======================================================="
+
+read -r -p "Warning : This script will configure some changes on your Pi, After which you might need to re-flash your SD Card. Are you sure that you wish to continue? [y/N] " confirm
+
+if ! [[ $confirm =~ ^([yY][eE][sS]|[yY])$ ]]
+then
+	exit 1
+fi
+
+clear
+echo "Performing Packages Updates"
+
+apt -y -qq update
+
+echo "Installing dependencies. Hang Tight!"
+
+apt -y -qq install hostapd udhcpd
+
+
+####################################################################
+# Handle Configuration Files
+####################################################################
+
+echo "Creating Backup for Configuration Files"
+
+readonly CONFIG_FILES=(/etc/udhcpd.conf
+	/etc/default/udhcpd
+	/etc/network/interfaces
+	/etc/hostapd/hostapd.conf
+	/etc/default/hostapd
+	/etc/sysctl.conf
+	/etc/iptables.ipv4.nat)
+
+for c in ${CONFIG_FILES[*]};
+do
+	if [ -f ${c} ]
+	then
+		cp -i ${c} ${c}.old
+	fi
+done
+
+echo "Config Files backed up"
+
+echo "Creating new Configuration Files"
+
+echo "Configuring DHCP Settings"
+read -r -p "Do you want to use preconfigured DNS servers? [y/N] " altdnsresponse
+
+if [[ $altdnsresponse =~ ^([yY][eE][sS]|[yY])$ ]]
+then
+	read -r -p "Would you like to use Unblock-Us DNS servers? [y/N] " unblockusdnsresponse
+	if [[ $unblockusdnsresponse =~ ^([yY][eE][sS]|[yY])$ ]]
+	then
+		cp ./configuration_files/udhcpd_unblockus.conf /etc/udhcpd.conf
+	else
+		read -r -p "Would you like to use OpenDNS DNS servers? [y/N] " opendnsresponse
+		if [[ $opendnsresponse =~ ^([yY][eE][sS]|[yY])$ ]]
+		then
+			cp ./configuration_files/udhcpd_opendns.conf /etc/udhcpd.conf
+		else
+			echo "No other DNS servers available to choose from. Reverting to Google DNS."
+			cp ./configuration_files/udhcpd_google.conf /etc/udhcpd.conf
+		fi
+	fi
+else
+	read -r -p "Please enter a custom dns server address of the form xxx.xxx.xxx.xxx : " _DNS
+	read -r -p "Please enter a custom router number from 0-254 : " _ROUTER
+	sed -e "s/ROUTER/${_ROUTER}/g" -e "s/DNS/${_DNS}/" ./configuration_files/udhcpd_template.conf > /etc/udhcpd.conf
+	sed -e "s/ROUTER/${_ROUTER}/g" -e "s/DNS/${_DNS}/" ./configuration_files/udhcpd_template.conf > /etc/udhcpd.conf
+fi
+# UDHCPD Settings
+
+cp ./configuration_files/udhcpd /etc/default
+
+# Copy in the systemd udhcpd.service file
+
+cp ./configuration_files/udhcpd.service /lib/systemd/system/
+
+# Tell systemd to enable the udhcpd.service
+
+systemctl enable udhcpd.service
+
+echo "Starting Interface Configurations"
+if [ -n "${_ROUTER}" ]; then
+	sed -e "s/ROUTER/${_ROUTER}/g" ./configuration_files/interfaces-template > /etc/network/interfaces
+else
+	cp ./configuration_files/interfaces /etc/network
+fi
+
+echo "Configuring HOSTAPD"
+
+readonly DEFAULTPWD="0123456789A"
+readonly DEFAULTSSID="RaspberryPiFi"
+readonly DEFAULTCHANNEL=8
+
+read -r -p "Do you want to use the default credentials : password=${DEFAULTPWD}, ssid=${DEFAULTSSID}, and channel=${DEFAULTCHANNEL}? [y/N] " althostapdresponse
+
+if [[ $althostapdresponse =~ ^([yY][eE][sS]|[yY])$ ]]
+then
+	cp ./configuration_files/hostapd.conf /etc/hostapd
+else
+	_PASSWORD1="0"
+	_PASSWORD2="1"
+	read -r -s -p "Please enter a new password at least 8 characters long : " _PASSWORD1
+	echo
+	read -r -s -p "Please enter the new password again: " _PASSWORD2
+	echo
+	while [ ${_PASSWORD1} != ${_PASSWORD2} ]
+	do
+		echo "Password mismatch please try again."
+		read -r -s -p "Please enter a new password at least 8 characters long : " _PASSWORD1
+		echo
+		read -r -s -p "Please enter the new password again: " _PASSWORD2
+		echo
+	done
+	read -r -p "Please enter a new name for your WiFi Access Point(SSID): " _SSID
+	# Sentry for the channel selection
+	_SENTRY="0"
+	while [ ${_SENTRY} != "1" ]
+	do
+		read -r -p "Please enter a new channel from 1 to 11: " _CHANNEL
+		if [ ${_CHANNEL} == ${_CHANNEL//[^0-9]/} ] && [ ${_CHANNEL} -lt 12 ]  && [ ${_CHANNEL} -gt 0 ]
+		then
+			echo "You selected channel $_CHANNEL."
+			_SENTRY="1"
+		else
+			echo "Invalid entry received of ${_CHANNEL} ."
+		fi
+	done
+	CONTENTS=$(<./configuration_files/hostapd.conf)
+	CONTENTS=${CONTENTS//wpa_passphrase=${DEFAULTPWD}/wpa_passphrase=${_PASSWORD1}}
+	CONTENTS=${CONTENTS//ssid=${DEFAULTSSID}/ssid=${_SSID}}
+	CONTENTS=${CONTENTS//channel=${DEFAULTCHANNEL}/channel=${_CHANNEL}}
+	echo "${CONTENTS}" > /etc/hostapd/hostapd.conf
+fi
+cp ./configuration_files/hostapd /etc/default
+
+
+
+
+read -r -p "Are you using an rtl871x chipset (such as one purchased via adafruit? (Select No if using Raspberry Pi Built in WiFi Card) [y/N] " adafruit
+
+if [[ $adafruit =~ ^([yY][eE][sS]|[yY])$ ]]
+then
+	mv /usr/sbin/hostapd /usr/sbin/hostapd.ORIG
+	echo "Adafruit hostapd binary copied"
+	cp ./hostapd-adafruit /usr/sbin/hostapd
+	cp ./configuration_files/hostapd-adafruit.conf /etc/hostapd/hostapd.conf
+	chmod 755 /usr/sbin/hostapd
+fi
+
+
+echo "Configuring NAT"
+cp ./configuration_files/sysctl.conf /etc
+
+echo "Configuring IPTABLES"
+read -r -p "Do you require chromecast support for unblock-us? [y/N] " chromecastresponse
+if [[ $chromecastresponse =~ ^([yY][eE][sS]|[yY])$ ]]
+then
+	cp ./configuration_files/iptables-chromecast /etc/iptables.ipv4.nat
+else
+	cp ./configuration_files/iptables.ipv4.nat /etc
+fi
+
+touch /var/lib/misc/udhcpd.leases
+
+echo "Starting your Access Point"
+echo "Unmasking HOSTAPD"
+sudo systemctl unmask hostapd
+echo "Enabeling"
+sudo systemctl enable hostapd
+service hostapd start
+update-rc.d hostapd enable
+
+echo "Initialising DHCP"
+service udhcpd start
+update-rc.d udhcpd enable
+
+
+echo "================================================================"
+echo "=================== Configuration complete! ===================="
+echo "================================================================"
+
+echo "+++++++++++++++++  REBOOTING in 10 SECONDS  ++++++++++++++++++++"
+
+
+sleep 10
+reboot
+
+exit 0
+
