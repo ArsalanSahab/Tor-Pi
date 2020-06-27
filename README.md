@@ -41,14 +41,14 @@ After Rebooting ...
 
 * Copy and Paste the below between any two set of comments :
 
-	       `Log notice file /var/log/tor/notices.log
+	        Log notice file /var/log/tor/notices.log
 		VirtualAddrNetwork 10.192.0.0/10
 		AutomapHostsSuffixes .onion,.exit
 		AutomapHostsOnResolve 1
 		TransPort 192.168.42.1:9040
 		TransListenAddress 192.168.42.1
 		DNSPort 192.168.42.1:53
-		DNSListenAddress 192.168.42.1 `
+		DNSListenAddress 192.168.42.1 
 
 * Save the file and exit.
 
